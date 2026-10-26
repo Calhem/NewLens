@@ -1,0 +1,54 @@
+# Continuous integration: runs on every push and pull request.
+# Backend tests run against a real TypeDB 3.14.1 server; the frontend is type-checked,
+# linted and built; the Docker images are built. No secrets or paid APIs are used.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      typedb:
+        image: typedb/typedb:3.14.1
+        ports:
+          - 1731:1729
+        options: >-
+          --health-cmd "bash -c 'exec 3<>/dev/tcp/127.0.0.1/1729'"
+          --health-interval 5s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+        with:
+          version: "0.13.5"
+      - run: uv sync --frozen
+      - run: cp .env.example .env
+      - run: uv run pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24.22.1"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
+
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: cp .env.example .env
+      - run: docker compose build

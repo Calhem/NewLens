@@ -1,0 +1,75 @@
+# Docker Compose file: everything NewsLens needs, started with one command.
+# Start:  docker compose up -d --build
+# Stop:   docker compose down          (data is kept in the newslens-typedb-data volume)
+# Reset:  see README "Resetting development data"
+#
+# NewsLens has its OWN TypeDB server, separate from any other project on this computer:
+# own container name, own data volume, own ports (1731/8002). Every port is bound to
+# 127.0.0.1, so only this computer can connect.
+
+services:
+  typedb:
+    image: typedb/typedb:3.14.1        # pinned exact version; change deliberately
+    container_name: newslens-typedb
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:1731:1729"   # gRPC: used by the Python driver
+      - "127.0.0.1:8002:8000"   # HTTP: used by TypeDB Studio
+    volumes:
+      - newslens-typedb-data:/var/lib/typedb/data
+    healthcheck:
+      # The image has no curl or wget; bash's /dev/tcp checks the driver port is accepting.
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/1729"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  api:
+    build: .
+    container_name: newslens-api
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TYPEDB_ADDRESS: typedb:1729   # the typedb service on Compose's private network
+      API_HOST: 0.0.0.0             # reachable by the web container; no port is published
+    depends_on:
+      typedb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+
+  worker:
+    build: .
+    container_name: newslens-worker
+    restart: unless-stopped
+    command: ["python", "-m", "newslens.worker"]
+    env_file: .env
+    environment:
+      TYPEDB_ADDRESS: typedb:1729
+    depends_on:
+      api:
+        condition: service_healthy   # the API creates the database and schema first
+
+  web:
+    build: ./web
+    container_name: newslens-web
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8090:8080"   # open http://127.0.0.1:8090 in your browser
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+
+volumes:
+  newslens-typedb-data:
+    name: newslens-typedb-data

@@ -1,0 +1,295 @@
+# NewsLens schema (Milestone 1: covers the first release, Milestones 1 to 3).
+#
+# What is stored, in three layers kept as separate types:
+#   TEXT        - documents (the article under analysis, and sources found as evidence),
+#                 and text-spans: exact passages with character offsets into a document's text.
+#   FINDINGS    - claims, evidence links and assessments. Every claim is anchored to at least
+#                 one text-span, and every model-made record links to the analysis-run that
+#                 produced it (produced-by), so it can be inspected and reproduced.
+#   BOOKKEEPING - analysis runs, methodology versions, model calls, search queries, migrations.
+#
+# `basis` says what a finding rests on: "stated" (the article says it), "implied" (follows from
+# the article's text) or "model-inferred" (our interpretation). It is never left out.
+#
+# Types for later milestones (framing findings, explicit arguments, implicit inferences,
+# narratives, comparisons, user challenges) are added by numbered files in schema/migrations/.
+
+define
+
+  # --- bookkeeping ----------------------------------------------------------------------------
+  attribute migration-id, value string;
+  attribute applied-at, value datetime-tz;
+
+  entity schema-migration,                   # one per migration applied to this database
+    owns migration-id @key,
+    owns applied-at @card(1..1);
+
+  # --- shared attributes ----------------------------------------------------------------------
+  attribute name, value string;
+  attribute alternative-name, value string;  # `alias` is reserved in TypeQL
+  attribute description, value string;
+  attribute url, value string;
+  attribute created-at, value datetime-tz;
+  attribute explanation, value string;
+
+  # --- documents ------------------------------------------------------------------------------
+  attribute doc-id, value string;
+  attribute canonical-url, value string;
+  attribute title, value string;              # the headline, for an article
+  attribute subheading, value string;
+  attribute body-text, value string;          # the extracted text that offsets and quotes refer to
+  attribute content-hash, value string @regex("^[0-9a-f]{64}$");   # SHA-256 of body-text
+  attribute published-at, value datetime-tz;  # when the document says it was published
+  attribute modified-at, value datetime-tz;   # when the document says it was last updated
+  attribute retrieved-at, value datetime-tz;  # when NewsLens fetched this copy
+  attribute language, value string;
+  attribute retrieval-status, value string @values("queued", "retrieved", "partial",
+    "not-permitted", "paywalled", "failed", "manual");
+  attribute retrieval-note, value string;     # what was or wasn't retrieved, in plain words
+  attribute input-method, value string @values("url", "manual-text");
+  attribute source-kind, value string @values("primary", "secondary", "wire", "press-release",
+    "unknown");
+
+  entity document @abstract,
+    owns doc-id @key,
+    owns url @card(0..1),                     # absent only for manually entered text
+    owns canonical-url @card(0..1),
+    owns title @card(0..1),
+    owns body-text @card(0..1),               # absent until retrieved, or if retrieval failed
+    owns content-hash @card(0..1),
+    owns published-at @card(0..1),
+    owns modified-at @card(0..1),
+    owns retrieved-at @card(0..1),
+    owns language @card(0..1),
+    owns retrieval-status @card(1..1),
+    owns retrieval-note @card(0..),
+    owns created-at @card(1..1),
+    plays publication:published,
+    plays authorship:work,
+    plays span-location:container,
+    plays source-dependency:dependent,
+    plays source-dependency:origin;
+
+  entity article sub document,                # an article a user submitted for analysis
+    owns subheading @card(0..1),
+    owns input-method @card(1..1),
+    plays coverage:report,
+    plays run-target:article;
+
+  entity source-document sub document,        # a page found while researching a claim
+    owns source-kind @card(1..1),
+    plays produced-by:output;
+
+  # --- who and what ---------------------------------------------------------------------------
+  attribute publisher-id, value string;
+  attribute domain, value string;
+  attribute actor-id, value string;
+  attribute event-id, value string;
+  attribute occurred-at, value datetime-tz;
+
+  entity publisher,
+    owns publisher-id @key,
+    owns name @card(1..1),
+    owns domain @card(0..),
+    plays publication:publisher;
+
+  entity actor @abstract,                     # a person or organisation named in a document
+    owns actor-id @key,
+    owns name @card(1..1),
+    owns alternative-name @card(0..),
+    plays speaker-attribution:speaker,
+    plays claim-subject:subject,
+    plays produced-by:output;
+
+  entity person sub actor,
+    plays authorship:author;
+
+  entity organisation sub actor;
+
+  entity event,                               # a specific happening that documents report on
+    owns event-id @key,
+    owns name @card(1..1),
+    owns description @card(0..1),
+    owns occurred-at @card(0..1),
+    plays coverage:event,
+    plays claim-subject:subject,
+    plays produced-by:output;
+
+  relation publication,                       # this publisher published this document
+    relates publisher @card(1..1),
+    relates published @card(1..1);
+
+  relation authorship,
+    relates author @card(1..1),
+    relates work @card(1..1);
+
+  relation coverage,                          # this article reports on this event
+    relates report @card(1..1),
+    relates event @card(1..1),
+    owns relevance @card(1..1),
+    plays produced-by:output;
+
+  attribute relevance, value string @values("same-event", "related-topic");
+
+  relation source-dependency,                 # one document repeats another's material
+    relates dependent @card(1..1),
+    relates origin @card(1..1),
+    owns dependency-kind @card(1..1),
+    owns explanation @card(0..1),
+    plays produced-by:output;
+
+  attribute dependency-kind, value string @values("same-wire-copy", "same-press-release",
+    "quotes-same-statement", "cites");
+
+  # --- text spans -----------------------------------------------------------------------------
+  attribute span-id, value string;
+  attribute start-offset, value integer;      # character offsets into the document's body-text
+  attribute end-offset, value integer;
+  attribute exact-text, value string;         # must equal body-text[start-offset:end-offset]
+
+  entity text-span,
+    owns span-id @key,
+    owns start-offset @card(1..1),
+    owns end-offset @card(1..1),
+    owns exact-text @card(1..1),
+    plays span-location:span,
+    plays claim-anchor:anchor,
+    plays evidence:excerpt,
+    plays produced-by:output;
+
+  entity quotation sub text-span,             # words the document attributes to a speaker
+    plays speaker-attribution:quotation;
+
+  relation span-location,                     # every span belongs to exactly one document
+    relates container @card(1..1),
+    relates span @card(1..1);
+
+  relation speaker-attribution,
+    relates quotation @card(1..1),
+    relates speaker @card(1..1),
+    owns confidence @card(1..1),
+    plays produced-by:output;
+
+  # --- claims, evidence and assessments -------------------------------------------------------
+  attribute claim-id, value string;
+  attribute claim-text, value string;
+  attribute claim-kind, value string @values("factual", "causal", "predictive", "interpretive",
+    "normative", "opinion");
+  attribute basis, value string @values("stated", "implied", "model-inferred");
+  attribute missing-information, value string;
+  attribute assessment-id, value string;
+  attribute verdict, value string @values("supported", "contradicted", "partially-supported",
+    "disputed", "unverifiable", "not-assessed");
+  attribute confidence, value string @values("high", "medium", "low");
+  attribute stance, value string @values("supports", "contradicts", "qualifies", "context");
+
+  entity claim,                               # one atomic, independently assessable statement
+    owns claim-id @key,
+    owns claim-text @card(1..1),
+    owns claim-kind @card(1..1),
+    owns basis @card(1..1),
+    owns missing-information @card(0..),
+    plays claim-anchor:claim,
+    plays claim-subject:claim,
+    plays evidence:claim,
+    plays assessment-of:claim,
+    plays produced-by:output;
+
+  relation claim-anchor,                      # the passage a claim comes from; at least one each
+    relates claim @card(1..1),
+    relates anchor @card(1..1),
+    plays produced-by:output;
+
+  relation claim-subject,                     # the people, organisations and events a claim is about
+    relates claim @card(1..1),
+    relates subject @card(1..1);
+
+  relation evidence,                          # this excerpt bears on this claim in this way
+    relates claim @card(1..1),
+    relates excerpt @card(1..1),
+    owns stance @card(1..1),
+    owns explanation @card(1..1),
+    plays assessment-of:cited,
+    plays produced-by:output;
+
+  entity assessment,                          # a verdict on one claim, from the evidence it cites
+    owns assessment-id @key,
+    owns verdict @card(1..1),
+    owns confidence @card(1..1),
+    owns explanation @card(1..1),
+    owns created-at @card(1..1),
+    plays assessment-of:assessment,
+    plays produced-by:output;
+
+  relation assessment-of,
+    relates assessment @card(1..1),
+    relates claim @card(1..1),
+    relates cited @card(0..);                # "not-assessed" and "unverifiable" may cite nothing
+
+  # --- runs and reproducibility ---------------------------------------------------------------
+  attribute run-id, value string;
+  attribute run-status, value string @values("queued", "running", "completed", "failed",
+    "cancelled");
+  attribute stage, value string;
+  attribute finished-at, value datetime-tz;
+  attribute lease-until, value datetime-tz;
+  attribute failure-reason, value string;
+  attribute methodology-version, value string;
+  attribute call-id, value string;
+  attribute provider, value string;
+  attribute model-id, value string;
+  attribute prompt-version, value string;
+  attribute input-tokens, value integer;
+  attribute output-tokens, value integer;
+  attribute cost-estimate, value decimal;
+  attribute query-text, value string;
+  attribute issued-at, value datetime-tz;
+  attribute result-count, value integer;
+
+  entity analysis-run,                        # one analysis of one article; also the job record
+    owns run-id @key,
+    owns run-status @card(1..1),
+    owns stage @card(0..1),
+    owns created-at @card(1..1),
+    owns finished-at @card(0..1),
+    owns lease-until @card(0..1),
+    owns failure-reason @card(0..1),
+    plays run-target:run,
+    plays produced-by:run,
+    plays run-call:run;
+
+  entity methodology,                         # a published version of the analysis rules
+    owns methodology-version @key,
+    owns description @card(1..1),
+    plays run-target:methodology;
+
+  entity model-call,
+    owns call-id @key,
+    owns provider @card(1..1),
+    owns model-id @card(1..1),
+    owns prompt-version @card(1..1),
+    owns input-tokens @card(0..1),
+    owns output-tokens @card(0..1),
+    owns cost-estimate @card(0..1),
+    owns created-at @card(1..1),
+    plays run-call:call;
+
+  entity search-query,
+    owns provider @card(1..1),
+    owns query-text @card(1..1),
+    owns issued-at @card(1..1),
+    owns result-count @card(0..1),
+    plays run-call:call;
+
+  relation run-target,                        # which article, under which methodology
+    relates run @card(1..1),
+    relates article @card(1..1),
+    relates methodology @card(1..1);
+
+  relation produced-by,                       # this record was made by this run
+    relates output @card(1..1),
+    relates run @card(1..1);
+
+  relation run-call,
+    relates run @card(1..1),
+    relates call @card(1..1);

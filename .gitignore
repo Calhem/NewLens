@@ -1,0 +1,30 @@
+# Local settings and secrets. Only the example file is committed.
+.env
+.env.*
+!.env.example
+
+# Python and tool caches
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend dependencies and build output
+node_modules/
+web/dist/
+
+# Local state and database backups never go in git.
+data/
+backups/
+*.typedb
+*.log
+
+# Private notes (TypeDB feedback log)
+notes/
+
+# Operating system and editor clutter
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

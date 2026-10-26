@@ -1,0 +1,26 @@
+[project]
+name = "newslens"
+version = "0.0.1"
+description = "Open-source, self-hostable tool for critically examining news reporting, on TypeDB"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+dependencies = [
+    "typedb-driver==3.14.0",
+    "fastapi>=0.162.0",
+    "pydantic>=2.14.1",
+    "pydantic-settings>=2.11",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# Hide a harmless warning from inside typedb-driver 3.14.0's own code.
+filterwarnings = ["ignore::SyntaxWarning"]
