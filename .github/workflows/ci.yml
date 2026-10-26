@@ -23,7 +23,7 @@ jobs:
           --health-interval 5s --health-timeout 3s --health-retries 30
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e   # v10.3.2 (this action publishes no short v10 tag)
         with:
           version: "0.13.5"
       - run: uv sync --frozen
