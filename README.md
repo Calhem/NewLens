@@ -29,7 +29,9 @@ implicit-message analysis (4), cross-publisher comparison (5). See
 
 ## Run it
 
-Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running).
+Needs [Docker Desktop](https://www.docker.com/products/docker-desktop/) (running). The
+maintenance scripts below (`uv run python -m scripts...`) also need
+[uv](https://docs.astral.sh/uv/), which installs the right Python by itself.
 
 ```bash
 cp .env.example .env
@@ -146,6 +148,11 @@ tests/           pytest suite
 web/             React frontend, its Dockerfile and nginx.conf
 docs/            plan (milestone-0.md), security.md, dependencies.md, limitations.md
 ```
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Please report security problems privately, as described
+in [SECURITY.md](SECURITY.md), not in public issues.
 
 ## Licence
 
