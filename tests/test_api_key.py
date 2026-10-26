@@ -69,7 +69,7 @@ def test_bracketed_paste_markers_are_removed():
 
 @pytest.mark.parametrize("pasted, reason", [
     ("\x07" + FAKE, "hidden control characters"),
-    ("My NewsLens key", "doesn't start with sk-"),
+    ("MyNewsLensKey", "doesn't start with sk-"),
     ("sk-ant-...AbCd", "not an API key"),
 ])
 def test_unhelpful_pastes_get_a_helpful_reason(pasted, reason):
