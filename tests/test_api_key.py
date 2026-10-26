@@ -6,7 +6,7 @@ from newslens.llm import client_options
 from scripts import set_anthropic_key
 from scripts.set_anthropic_key import problem_with, save_key
 
-FAKE = "sk-ant-api03-" + "x" * 60          # pragma: allowlist secret (not a real key)
+FAKE = "sk-ant-api03-" + "x" * 93 + "AA"   # pragma: allowlist secret (not a real key; real length)
 
 
 def test_the_key_is_written_replacing_the_old_value(tmp_path):
@@ -26,7 +26,9 @@ def test_the_key_is_added_when_missing(tmp_path):
 
 
 @pytest.mark.parametrize("key, reason", [
-    ("", "nothing was pasted"), ("sk-ant-short", "shorter"), ("sk-proj-" + "x" * 50, "start with sk-ant-"),
+    ("", "nothing was pasted"), ("sk-proj-" + "x" * 100, "start with sk-ant-api"),
+    ("sk-ant-api03-" + "x" * 60, "copied incompletely"),       # the 73-character case seen for real
+    ("sk-ant-admin01-" + "x" * 100, "Admin API key"),
     (FAKE[:20] + " " + FAKE[20:], "spaces"),
 ])
 def test_things_that_are_not_keys_are_refused(key, reason):

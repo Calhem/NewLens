@@ -14,7 +14,8 @@ from pathlib import Path
 from scripts.set_typedb_password import with_setting
 
 ENV_FILE = Path(".env")
-PREFIX = "sk-ant-"
+PREFIX = "sk-ant-api"
+MIN_LENGTH = 100        # Anthropic API keys are about 108 characters; shorter usually means cut off
 
 
 def problem_with(key):
@@ -23,10 +24,13 @@ def problem_with(key):
         return "nothing was pasted"
     if any(ch.isspace() for ch in key):
         return "it contains spaces or line breaks; copy just the key"
+    if key.startswith("sk-ant-admin"):
+        return "this is an Admin API key; NewsLens needs an ordinary API key (sk-ant-api...)"
     if not key.startswith(PREFIX):
         return f"Anthropic API keys start with {PREFIX}"
-    if len(key) < 40:
-        return "it is shorter than an Anthropic API key"
+    if len(key) < MIN_LENGTH:
+        return (f"it is {len(key)} characters, but Anthropic API keys are about 108; it was "
+                "probably copied incompletely. Use the Copy button in the Anthropic Console")
     return None
 
 

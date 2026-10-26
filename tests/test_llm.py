@@ -222,3 +222,17 @@ def test_refusals_and_bad_output_are_charged_and_reported(driver, db):
         ask(model)
     assert statuses(budget) == ["settled"] * 3
     assert budget.summary()["committed_usd"] == Decimal(3 * 400 + 200 + 200 + 20_000) / 1_000_000
+
+
+def test_a_call_that_does_not_fit_the_remaining_budget_is_not_sent(driver, db):
+    """Earlier spending counts: a call whose maximum cost exceeds what is LEFT is refused."""
+    probe = max_cost_micros(PRICING, len(_request_bytes()), 1000)
+    limit = Decimal(probe * 3 // 2) / 1_000_000            # room for one call's ceiling, not two
+    budget = capped(driver, db, limit, limit)
+    model, fake = gateway(budget, reply({"ok": True}, input_tokens=100, output_tokens=10),
+                          reply({"ok": True}))
+    ask(model)                                         # fits; settles to its small real cost
+    budget.reserve("other", "claude-opus-5-5", probe // 2 + 1)   # something else uses part of what's left
+    with pytest.raises(BudgetExceeded):
+        ask(model)                                     # its ceiling no longer fits what remains
+    assert len(fake.requests) == 1                     # the second request was never sent
