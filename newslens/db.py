@@ -62,3 +62,28 @@ def run_file(driver, db, path, kind=TransactionType.SCHEMA):
     with driver.transaction(db, kind) as tx:
         tx.query(Path(path).read_text()).resolve()
         tx.commit()
+
+
+def tx_fetch(tx, query):
+    return list(tx.query(query).resolve().as_concept_documents())
+
+
+def atomically(driver, db, work, retries=25):
+    """Run work(tx) in one write transaction and commit, retrying when a concurrent transaction
+    conflicts. TypeDB rejects the second of two transactions that change the same value
+    ("isolation conflict"); a conflicted transaction committed nothing, so a retry is safe.
+
+    From Charcoal's charcoal/db.py (same author)."""
+    import random
+    import time
+    from typedb.driver import TypeDBDriverException
+    for attempt in range(retries):
+        try:
+            with driver.transaction(db, TransactionType.WRITE) as tx:
+                result = work(tx)
+                tx.commit()
+                return result
+        except TypeDBDriverException as error:
+            if "isolation conflict" not in str(error) or attempt == retries - 1:
+                raise
+            time.sleep(0.02 * (attempt + 1) + random.random() / 50)

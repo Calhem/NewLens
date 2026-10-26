@@ -3,7 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from newslens import store
+from newslens import migrations, store
 from newslens.api import create_app
 
 URL = "https://news.example.org/2026/10/synthetic-story"
@@ -14,7 +14,8 @@ def test_health_reports_database_and_schema(client, settings):
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "typedb": "reachable",
                                "database": settings.typedb_database,
-                               "schema_version": "000-base", "detail": None}
+                               "schema_version": migrations.migration_files()[-1].stem,
+                               "model_provider": "none", "detail": None}
 
 
 def test_submit_then_read_back(client):
@@ -29,7 +30,10 @@ def test_submit_then_read_back(client):
     assert run["methodology_version"] == store.METHODOLOGY_VERSION
 
     fetched = client.get(f"/api/articles/{article['id']}")
-    assert fetched.status_code == 200 and fetched.json() == article
+    assert fetched.status_code == 200
+    detail = fetched.json()
+    assert {k: detail[k] for k in article} == article          # the detail view adds fields
+    assert detail["text"] is None and detail["claims"] == [] and detail["quotations"] == []
     assert [a["id"] for a in client.get("/api/articles").json()] == [article["id"]]
 
 
@@ -57,7 +61,11 @@ def test_saved_articles_survive_a_restart(settings):
     ("javascript:alert(1)", "http:// or https://"),
     ("example.org/story", "http:// or https://"),
     ("https://localhost/story", "full website name"),
-    ("https:///story", "full website name"),
+    ("https:///story", "No website name"),
+    ("https://127.0.0.1/story", "not an IP address"),
+    ("https://[::1]/story", "not an IP address"),
+    ("http://metadata.google.internal/computeMetadata/v1/", ".internal"),
+    ("https://example.org:8443/story", "Port 8443"),
     ("https://user:pass@example.org/", "user name or password"),
     ("https://example.org/a b", "spaces or control characters"),
     ("https://example.org/\x00", "spaces or control characters"),
@@ -108,3 +116,39 @@ def test_stale_connection_is_replaced(client):
     client.app.state.database.driver().close()
     assert client.post("/api/articles", json={"url": URL + "-2"}).status_code == 201
     assert len(client.get("/api/articles").json()) == 2
+
+
+def test_wrong_password_is_explained(base_settings):
+    from pydantic import SecretStr
+    settings = base_settings.model_copy(update={"typedb_password": SecretStr("not-the-password")})
+    with TestClient(create_app(settings)) as c:
+        health = c.get("/api/health")
+        assert health.status_code == 503
+        assert "refused the login" in health.json()["detail"]
+        assert "not-the-password" not in health.text
+
+
+TEXT = 'The mayor said the tram line opens in May. "We are on schedule," she said.'
+
+
+def test_manual_text_is_saved_exactly(client):
+    created = client.post("/api/articles/manual", json={"title": "  Tram   line ", "text": TEXT})
+    assert created.status_code == 201
+    article = created.json()
+    assert article["input_method"] == "manual-text" and article["retrieval_status"] == "manual"
+    assert article["title"] == "Tram line" and article["url"] is None
+    assert article["runs"][0]["status"] == "queued"
+    detail = client.get(f"/api/articles/{article['id']}").json()
+    assert detail["text"] == TEXT and len(detail["content_hash"]) == 64
+
+
+@pytest.mark.parametrize("body, reason", [
+    ({"title": "T", "text": "too short"}, "at least 20"),
+    ({"title": "", "text": TEXT}, "at least 1"),
+    ({"title": "T", "text": "x" * 100_001}, "at most 100000"),
+    ({"title": "T", "text": TEXT, "url": "http://localhost/x"}, "full website name"),
+])
+def test_bad_manual_text_is_refused(client, body, reason):
+    response = client.post("/api/articles/manual", json=body)
+    assert response.status_code == 422 and reason in response.text
+    assert client.get("/api/articles").json() == []

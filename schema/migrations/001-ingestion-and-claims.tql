@@ -1,0 +1,77 @@
+# Migration 001 (Milestone 2): ingestion stages, extracted metadata, links, and the model budget.
+#
+# Safe for existing data: every new attribute on an existing type is optional, except on
+# model-call, which had no instances before this migration (nothing could create one).
+
+define
+
+  # --- analysis stages: one record per stage of a run ------------------------------------------
+  attribute stage-name, value string @values("retrieve", "extract", "claims");
+  attribute stage-status, value string @values("running", "completed", "failed", "skipped");
+  attribute started-at, value datetime-tz;
+  attribute stage-detail, value string;        # what happened, in plain words; never a secret
+
+  entity analysis-stage,
+    owns stage-name @card(1..1),
+    owns stage-status @card(1..1),
+    owns started-at @card(1..1),
+    owns finished-at @card(0..1),
+    owns stage-detail @card(0..),
+    plays run-stage:stage;
+
+  relation run-stage,
+    relates run @card(1..1),
+    relates stage @card(1..1);
+
+  analysis-run plays run-stage:run;
+
+  # --- what retrieval and extraction recorded about a document --------------------------------
+  attribute metadata-source, value string;     # e.g. "published-at: JSON-LD datePublished"
+  attribute byline-name, value string;         # an author name exactly as the page gives it
+  attribute http-status, value integer;
+  attribute final-url, value string;           # after redirects
+
+  document owns metadata-source @card(0..),
+    owns byline-name @card(0..),
+    owns http-status @card(0..1),
+    owns final-url @card(0..1),
+    plays link-location:container;
+
+  attribute anchor-text, value string;
+
+  entity hyperlink,                            # a link inside a document's main text
+    owns url @card(1..1),
+    owns anchor-text @card(0..1),
+    plays link-location:link;
+
+  relation link-location,
+    relates container @card(1..1),
+    relates link @card(1..1);
+
+  # --- model spending: one global budget, enforced in TypeDB ----------------------------------
+  attribute ledger-id, value string;
+  attribute committed-micros, value integer;   # micro-dollars reserved or spent
+  attribute limit-micros, value integer;
+  attribute warning-micros, value integer;
+
+  entity budget-ledger,                        # every reservation updates committed-micros, so
+    owns ledger-id @key,                       # concurrent reservations conflict in TypeDB and
+    owns committed-micros @card(1..1),         # can't both pass the remaining-budget check
+    owns limit-micros @card(0..1),             # no limit = every reservation is refused
+    owns warning-micros @card(0..1);
+
+  attribute call-status, value string @values("reserved", "settled", "failed", "held");
+  attribute call-purpose, value string;
+  attribute reserved-micros, value integer;
+  attribute actual-micros, value integer;
+  attribute settled-at, value datetime-tz;
+  attribute stop-reason, value string;
+  attribute call-detail, value string;
+
+  model-call owns call-status @card(1..1),
+    owns call-purpose @card(1..1),
+    owns reserved-micros @card(1..1),
+    owns actual-micros @card(0..1),
+    owns settled-at @card(0..1),
+    owns stop-reason @card(0..1),
+    owns call-detail @card(0..1);

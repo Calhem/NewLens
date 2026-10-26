@@ -1,21 +1,36 @@
 """The background worker: `uv run python -m newslens.worker`.
 
-Milestone 1: the worker only checks that it can reach TypeDB and reports how many analysis
-runs are waiting. It does not claim or change any run. Retrieval and analysis are added in
-Milestone 2.
+Every few seconds: mark abandoned runs as failed, then claim the oldest queued run and run it
+(retrieve -> extract -> claims). One run at a time.
 """
 
 import logging
 import signal
 import sys
 import threading
+from pathlib import Path
 
-from newslens import store
+from newslens import jobs, pipeline, store
 from newslens.db import connect
+from newslens.ingest.http import FetchConfig, Fetcher
+from newslens.llm import provider_from_settings
+from newslens.migrations import ensure_database
 from newslens.settings import ConfigError, load_settings
 
 log = logging.getLogger("newslens.worker")
-POLL_SECONDS = 30
+POLL_SECONDS = 3
+
+
+def work_once(driver, db, fetcher, model):
+    """Recover abandoned runs, then run at most one queued run. Returns the run id or None."""
+    for run_id in jobs.recover_abandoned(driver, db):
+        log.warning("run %s was abandoned; marked failed", run_id)
+    run_id = jobs.claim_next(driver, db)
+    if run_id:
+        log.info("run %s: started", run_id)
+        outcome = pipeline.run_analysis(driver, db, run_id, fetcher, model)
+        log.info("run %s: %s", run_id, outcome)
+    return run_id
 
 
 def main():
@@ -30,21 +45,25 @@ def main():
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
 
-    db, driver = settings.typedb_database, None
-    log.info("worker started; analysis is not implemented yet (Milestone 2), runs stay queued")
+    db, driver, model = settings.typedb_database, None, None
+    fetcher = Fetcher(FetchConfig(lock_dir=Path(settings.fetch_lock_dir)))
+    log.info("worker started; model provider: %s", settings.newslens_model_provider)
     while not stop.is_set():
         try:
-            driver = driver or connect(settings)
-            if driver.databases.contains(db):
-                log.info("%d analysis run(s) queued", store.count_queued_runs(driver, db))
-            else:
-                log.info("database %s not created yet (the API creates it on first use)", db)
+            if driver is None:
+                driver = connect(settings)
+                ensure_database(driver, db)
+                store.ensure_methodology(driver, db)
+                model = provider_from_settings(settings, driver, db)
+            if work_once(driver, db, fetcher, model):
+                continue                 # look for the next run straight away
         except Exception as error:
-            log.warning("TypeDB unavailable: %s", type(error).__name__)
+            log.warning("worker problem: %s", type(error).__name__)
             if driver is not None:
                 driver.close()
             driver = None
         stop.wait(POLL_SECONDS)
+    fetcher.close()
     if driver is not None:
         driver.close()
     log.info("worker stopped")

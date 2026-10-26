@@ -11,16 +11,22 @@ dependencies = [
     "pydantic>=2.14.1",
     "pydantic-settings>=2.11",
     "uvicorn>=0.54.0",
+    "trafilatura>=2.3.1",
+    "protego>=0.7.0",
+    "defusedxml>=0.7.1",
+    "httpcore==1.0.*",
+    "anthropic>=2.3.0",
 ]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
+    "httpx2>=2.16.0",
     "pytest>=8",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
-# Hide a harmless warning from inside typedb-driver 3.14.0's own code.
-filterwarnings = ["ignore::SyntaxWarning"]
+pythonpath = [".", "tests"]
+# Deprecation warnings fail the tests so they get fixed promptly; the SyntaxWarning is
+# harmless and comes from inside typedb-driver 3.14.0's own code.
+filterwarnings = ["error::DeprecationWarning", "ignore::SyntaxWarning"]

@@ -11,22 +11,27 @@ T = now()
 ARTICLE = 'has input-method "url", has created-at ' + T
 
 
-def test_new_database_gets_base_schema(db, driver):
-    assert schema_version(driver, db) == BASE_ID
+LATEST = migrations.migration_files()[-1].stem
+
+
+def test_new_database_gets_base_schema_and_every_migration(db, driver):
+    assert applied(driver, db) == {BASE_ID, *(p.stem for p in migrations.migration_files())}
+    assert schema_version(driver, db) == LATEST
 
 
 def test_ensure_database_is_idempotent(db, driver):
+    before = applied(driver, db)
     assert ensure_database(driver, db) == []
-    assert applied(driver, db) == {BASE_ID}
+    assert applied(driver, db) == before
 
 
 def test_pending_migration_applied_once(db, driver, tmp_path, monkeypatch):
-    (tmp_path / "001-test-note.tql").write_text(
+    (tmp_path / "999-test-note.tql").write_text(
         "define attribute test-note, value string; entity article, owns test-note @card(0..1);")
     monkeypatch.setattr(migrations, "MIGRATIONS", tmp_path)
-    assert ensure_database(driver, db) == ["001-test-note"]
+    assert ensure_database(driver, db) == ["999-test-note"]
     assert ensure_database(driver, db) == []
-    assert schema_version(driver, db) == "001-test-note"
+    assert schema_version(driver, db) == "999-test-note"
 
 
 @pytest.mark.parametrize("label, query, code", [

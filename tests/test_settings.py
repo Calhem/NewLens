@@ -10,7 +10,8 @@ GOOD = dict(typedb_address="127.0.0.1:1731", typedb_username="admin",
 
 @pytest.fixture(autouse=True)
 def no_environment(monkeypatch):
-    for name in ("TYPEDB_ADDRESS", "TYPEDB_USERNAME", "TYPEDB_PASSWORD", "TYPEDB_DATABASE"):
+    for name in ("TYPEDB_ADDRESS", "TYPEDB_USERNAME", "TYPEDB_PASSWORD", "TYPEDB_DATABASE",
+                 "NEWSLENS_ENVIRONMENT", "NEWSLENS_MODEL_PROVIDER", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -58,3 +59,14 @@ def test_environment_variables_are_used(monkeypatch):
         monkeypatch.setenv(key.upper(), value)
     monkeypatch.setenv("TYPEDB_DATABASE", "from-env")
     assert load_settings(_env_file=None).typedb_database == "from-env"
+
+
+def test_model_provider_defaults_to_none():
+    assert load().newslens_model_provider == "none"
+
+
+def test_anthropic_provider_needs_a_key():
+    with pytest.raises(ConfigError, match="ANTHROPIC_API_KEY is required"):
+        load(newslens_model_provider="anthropic")
+    settings = load(newslens_model_provider="anthropic", anthropic_api_key="sk-test-not-real")  # pragma: allowlist secret
+    assert "sk-test-not-real" not in repr(settings)

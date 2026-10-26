@@ -14,6 +14,14 @@ from newslens.migrations import ensure_database
 from newslens.settings import load_settings
 
 
+@pytest.fixture(autouse=True)
+def no_real_claude(monkeypatch):
+    """Tests must never create a real Claude client: any attempt fails the test."""
+    def refuse(*args, **kwargs):
+        raise RuntimeError("a test tried to create a real Claude client")
+    monkeypatch.setattr("newslens.llm._real_client", refuse)
+
+
 @pytest.fixture(scope="session")
 def base_settings():
     return load_settings()

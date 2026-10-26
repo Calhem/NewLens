@@ -13,6 +13,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 COPY newslens ./newslens
 COPY schema ./schema
+COPY config ./config
 
 # Run as an ordinary user, not root.
 RUN useradd --system --uid 10001 newslens

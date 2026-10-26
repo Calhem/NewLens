@@ -51,6 +51,7 @@ services:
     env_file: .env
     environment:
       TYPEDB_ADDRESS: typedb:1729
+      FETCH_LOCK_DIR: /tmp/newslens-host-locks   # per-website rate-limit locks (container-local)
     depends_on:
       api:
         condition: service_healthy   # the API creates the database and schema first

@@ -40,9 +40,24 @@ Whenever you hit a TypeDB bug, documentation gap, confusing error or surprising 
 add it to `notes/typedb-feedback.md` (git-ignored, private) with the date, what was seen and
 a suggested fix. Also note things that worked well.
 
+## Code map
+- `newslens/settings.py` (validated config), `db.py` (connect, read, write, atomically, string),
+  `migrations.py`, `store.py` (ALL application TypeQL), `api.py` (FastAPI), `models.py` (API shapes).
+- `newslens/ingest/`: `netsafe.py` + `http.py` (SSRF-safe fetching; never weaken a check to pass a
+  test), `robots.py`, `extract.py` (metadata only from explicit markup; never trafilatura's dates).
+- `newslens/jobs.py` (run queue with leases in TypeDB), `pipeline.py` (retrieve -> extract -> claims),
+  `claims.py` (prompt, schema, validation: quotes must be verbatim), `llm.py` (the ONLY module that
+  talks to a model; hard spend cap in TypeDB; no fallbacks).
+- Tests: `tests/webserver.py` (local fake websites), `tests/fake_claude.py` (fake model). Tests never
+  call a real model or a real website.
+- Docs: `docs/security.md`, `docs/dependencies.md`, `docs/limitations.md` - keep them true.
+
 ## Commands
 - `docker compose up -d --build`: everything; web at http://127.0.0.1:8090.
 - `uv run pytest`: tests (TypeDB running; they use disposable `newslens-test-*` databases).
 - `uv run python -m scripts.reset_dev`: empty and recreate the dev database (asks first).
+- `uv run python -m scripts.set_typedb_password`, `uv run python -m scripts.set_budget --limit N`.
+- Real model calls cost money: they need NEWSLENS_MODEL_PROVIDER=anthropic, a key AND a budget,
+  and the owner's explicit approval.
 - Node.js is not installed on the owner's Mac: use `scripts/npm-docker.sh npm ...`.
 - Docker CLI lives at `/Applications/Docker.app/Contents/Resources/bin/docker` (not on PATH).

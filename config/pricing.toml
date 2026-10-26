@@ -1,0 +1,16 @@
+# Claude prices NewsLens uses to reserve and record API spend, in US dollars per million tokens.
+#
+# These are NOT guaranteed current. Check them against the source below and update
+# `verified_on` whenever you do. newslens/llm.py refuses to make calls if `verified_on` is
+# more than 45 days old, so a stale price can't silently under-count spend.
+#
+# Assumes global routing: NewsLens never sets `inference_geo`. US-only routing would cost 1.1x.
+# Thinking tokens are billed as output tokens; they count against max_tokens.
+
+[models."claude-opus-5-5"]
+input_usd_per_mtok = "4.00"
+output_usd_per_mtok = "20.00"
+cache_write_usd_per_mtok = "5.00"     # 5-minute cache writes (NewsLens doesn't use caching yet)
+cache_read_usd_per_mtok = "0.20"
+verified_on = 2026-10-26
+source = "https://platform.claude.com/docs/en/about-claude/pricing"

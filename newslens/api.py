@@ -16,12 +16,19 @@ from typedb.driver import TypeDBDriverException
 from newslens import store
 from newslens.db import connect
 from newslens.migrations import ensure_database, schema_version
-from newslens.models import ARTICLE_ID, ArticleOut, Health, SubmitArticle
+from newslens.models import ARTICLE_ID, ArticleDetail, ArticleOut, Health, SubmitArticle, SubmitText
 from newslens.settings import load_settings
 
 log = logging.getLogger("newslens.api")
 
 UNAVAILABLE = "The database is not reachable. Check that TypeDB is running (docker compose ps)."
+LOGIN_REFUSED = ("TypeDB refused the login. Check TYPEDB_USERNAME and TYPEDB_PASSWORD in .env "
+                 "(after `docker compose down -v` the password is back to TypeDB's default).")
+
+
+def explain(error):
+    """A safe, plain explanation of a connection failure (never the raw driver message)."""
+    return LOGIN_REFUSED if "CXN16" in str(error) else UNAVAILABLE
 
 
 class Database:
@@ -64,6 +71,9 @@ class Database:
 
 def create_app(settings=None):
     settings = settings or load_settings()
+    if settings.uses_default_password:
+        log.warning("TypeDB is using its default password. Fine on one computer; before sharing "
+                    "this installation run: uv run python -m scripts.set_typedb_password")
     database = Database(settings)
 
     @asynccontextmanager
@@ -80,9 +90,9 @@ def create_app(settings=None):
             return database.driver()
         except Exception as error:
             # The error type only: driver messages can include addresses but never the password.
-            log.warning("TypeDB unavailable: %s", type(error).__name__)
+            log.warning("TypeDB unavailable: %s", explain(error))
             database.reset()
-            raise HTTPException(503, UNAVAILABLE) from None
+            raise HTTPException(503, explain(error)) from None
 
     @app.get("/api/health", response_model=Health)
     def health():
@@ -90,13 +100,13 @@ def create_app(settings=None):
             driver = database.driver()
             version = schema_version(driver, database.name)
         except Exception as error:
-            log.warning("health check: TypeDB unavailable: %s", type(error).__name__)
+            log.warning("health check: %s", explain(error))
             database.reset()
             body = Health(status="unavailable", typedb="unreachable", database=database.name,
-                          detail=UNAVAILABLE)
+                          detail=explain(error))
             return JSONResponse(body.model_dump(), status_code=503)
         return Health(status="ok", typedb="reachable", database=database.name,
-                      schema_version=version)
+                      schema_version=version, model_provider=settings.newslens_model_provider)
 
     def call(work):
         """Run work(driver, database_name). If the connection has gone stale (for example
@@ -117,13 +127,19 @@ def create_app(settings=None):
             return store.get_article(driver, db, store.submit_url(driver, db, body.url))
         return call(work)
 
+    @app.post("/api/articles/manual", response_model=ArticleOut, status_code=201)
+    def submit_text(body: SubmitText):
+        def work(driver, db):
+            return store.get_article(driver, db, store.submit_text(driver, db, body.title, body.text, body.url))
+        return call(work)
+
     @app.get("/api/articles", response_model=list[ArticleOut])
     def list_articles():
         return call(store.list_articles)
 
-    @app.get("/api/articles/{article_id}", response_model=ArticleOut)
+    @app.get("/api/articles/{article_id}", response_model=ArticleDetail)
     def get_article(article_id: str = Path(pattern=ARTICLE_ID)):
-        article = call(lambda driver, db: store.get_article(driver, db, article_id))
+        article = call(lambda driver, db: store.get_article(driver, db, article_id, detail=True))
         if article is None:
             raise HTTPException(404, "No article with that id.")
         return article
