@@ -40,7 +40,13 @@ def problem_with(key):
     if key.startswith("sk-ant-admin"):
         return "this is an Admin API key; NewsLens needs an ordinary API key (sk-ant-api...)"
     if not key.startswith(PREFIX):
-        hint = ("it starts like a key but not an API key" if key.startswith("sk-")
+        hint = ("this looks like a Claude subscription login token (sk-ant-oat...), which "
+                "can't be used here; create an API key in the Anthropic Console instead"
+                if key.startswith("sk-ant-oat")
+                else "this looks like a different kind of Anthropic credential, not an API key"
+                if key.startswith("sk-ant-")
+                else "this looks like another company's API key, not an Anthropic one"
+                if key.startswith("sk-")
                 else "it doesn't start with sk- at all, so the clipboard may hold something else "
                      "(the key's name, or the shortened preview the Console shows)")
         return f"Anthropic API keys start with {PREFIX}; {hint}"
