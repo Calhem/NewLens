@@ -98,3 +98,13 @@ def test_unreachable_database_gives_503_with_explanation(base_settings):
         assert "docker compose ps" in health.json()["detail"]
         assert c.post("/api/articles", json={"url": URL}).status_code == 503
         assert "password" not in health.text
+
+
+def test_stale_connection_is_replaced(client):
+    """After TypeDB restarts, the old connection is dead; the next request reconnects."""
+    article_id = client.post("/api/articles", json={"url": URL}).json()["id"]
+    client.app.state.database.driver().close()      # what a server restart does to it
+    assert client.get(f"/api/articles/{article_id}").status_code == 200
+    client.app.state.database.driver().close()
+    assert client.post("/api/articles", json={"url": URL + "-2"}).status_code == 201
+    assert len(client.get("/api/articles").json()) == 2

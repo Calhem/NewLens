@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Path
 from fastapi.responses import JSONResponse
+from typedb.driver import TypeDBDriverException
 
 from newslens import store
 from newslens.db import connect
@@ -97,19 +98,32 @@ def create_app(settings=None):
         return Health(status="ok", typedb="reachable", database=database.name,
                       schema_version=version)
 
+    def call(work):
+        """Run work(driver, database_name). If the connection has gone stale (for example
+        TypeDB restarted), reconnect and try once more; if TypeDB is down, answer 503.
+
+        A retried write can't half-apply (each write is one transaction), and an error that
+        isn't about the connection fails the same way on the retry and is raised."""
+        try:
+            return work(driver_or_503(), database.name)
+        except TypeDBDriverException as error:
+            log.warning("TypeDB error, reconnecting once: %s", type(error).__name__)
+            database.reset()
+        return work(driver_or_503(), database.name)
+
     @app.post("/api/articles", response_model=ArticleOut, status_code=201)
     def submit_article(body: SubmitArticle):
-        driver = driver_or_503()
-        article_id = store.submit_url(driver, database.name, body.url)
-        return store.get_article(driver, database.name, article_id)
+        def work(driver, db):
+            return store.get_article(driver, db, store.submit_url(driver, db, body.url))
+        return call(work)
 
     @app.get("/api/articles", response_model=list[ArticleOut])
     def list_articles():
-        return store.list_articles(driver_or_503(), database.name)
+        return call(store.list_articles)
 
     @app.get("/api/articles/{article_id}", response_model=ArticleOut)
     def get_article(article_id: str = Path(pattern=ARTICLE_ID)):
-        article = store.get_article(driver_or_503(), database.name, article_id)
+        article = call(lambda driver, db: store.get_article(driver, db, article_id))
         if article is None:
             raise HTTPException(404, "No article with that id.")
         return article
