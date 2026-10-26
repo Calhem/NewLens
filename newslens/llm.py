@@ -269,10 +269,19 @@ class Budget:
                 "held": [c for c in calls if c["status"] == "held"], "calls": calls}
 
 
+API_BASE_URL = "https://api.anthropic.com"
+
+
+def client_options(api_key, timeout):
+    """How the real client is built. max_retries=0: the SDK must not retry on its own, outside
+    the budget. base_url is fixed so the key only ever goes to Anthropic's own API, whatever
+    ANTHROPIC_BASE_URL may be set to in the environment."""
+    return {"api_key": api_key, "base_url": API_BASE_URL, "max_retries": 0, "timeout": timeout}
+
+
 def _real_client(api_key, timeout):
     import anthropic    # imported here so tests never touch it unless asked to
-    # max_retries=0: the SDK must not retry on its own, outside the budget.
-    return anthropic.Anthropic(api_key=api_key, max_retries=0, timeout=timeout)
+    return anthropic.Anthropic(**client_options(api_key, timeout))
 
 
 def _status_of(error):

@@ -49,6 +49,11 @@ submission.
   password, sets it on the server and writes it to `.env` (permissions 600) without showing it.
   TypeDB CE has no per-user permissions (any user can see every database), so a separate
   "application user" would not add protection; a strong admin password is the control.
+- **The API key** is entered at a hidden prompt (`scripts.set_anthropic_key`) and stored only in
+  `.env` (mode 600, git-ignored, excluded from Docker images by `.dockerignore`). The client is
+  built with Anthropic's own address fixed in code, so an `ANTHROPIC_BASE_URL` set elsewhere in
+  the environment can't redirect the key. Note: Docker passes `.env` to both the api and worker
+  containers, so the key is visible to anyone who can inspect those containers on this computer.
 - **Model spending.** No model is called unless `NEWSLENS_MODEL_PROVIDER=anthropic`, an
   `ANTHROPIC_API_KEY` is set, AND a spending limit is set in TypeDB
   (`scripts.set_budget`). Each call reserves its maximum possible cost first and is refused if

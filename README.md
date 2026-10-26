@@ -90,7 +90,10 @@ Claim extraction uses Claude (`claude-opus-5-5`, $4 per million input tokens and
 million output tokens, checked 2026-10-26; see `config/pricing.toml`). A long article costs at
 most about $0.75 to process and usually much less. You need your own Anthropic API key.
 
-1. Set `NEWSLENS_MODEL_PROVIDER=anthropic` and `ANTHROPIC_API_KEY=...` in `.env`.
+1. Save your key with `uv run python -m scripts.set_anthropic_key`. It asks for the key at a
+   hidden prompt and writes it to `.env` (readable only by you, never committed); never paste a
+   key into chat, source code or a command line. Then set `NEWSLENS_MODEL_PROVIDER=anthropic`
+   in `.env`.
 2. Set a spending limit (no call is made until you do):
    `uv run python -m scripts.set_budget --limit 5 --warning 4`. Run it without arguments to
    see spending so far.

@@ -27,12 +27,17 @@ from newslens.settings import ConfigError, load_settings
 ENV_FILE = Path(".env")
 
 
+def with_setting(env_text, name, value):
+    """The .env text with `name` set to `value` (replaced if present, added if absent)."""
+    line, pattern = f"{name}={value}", rf"^{re.escape(name)}=.*$"
+    if re.search(pattern, env_text, flags=re.MULTILINE):
+        return re.sub(pattern, lambda _: line, env_text, flags=re.MULTILINE)
+    return env_text.rstrip("\n") + f"\n{line}\n"
+
+
 def with_password(env_text, password):
     """The .env text with TYPEDB_PASSWORD set to `password` (added if absent)."""
-    line = f"TYPEDB_PASSWORD={password}"
-    if re.search(r"^TYPEDB_PASSWORD=.*$", env_text, flags=re.MULTILINE):
-        return re.sub(r"^TYPEDB_PASSWORD=.*$", lambda _: line, env_text, flags=re.MULTILINE)
-    return env_text.rstrip("\n") + f"\n{line}\n"
+    return with_setting(env_text, "TYPEDB_PASSWORD", password)
 
 
 def change_password(settings, env_file=ENV_FILE):
