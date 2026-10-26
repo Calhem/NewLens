@@ -4,7 +4,7 @@ import pytest
 
 from newslens.llm import client_options
 from scripts import set_anthropic_key
-from scripts.set_anthropic_key import problem_with, save_key
+from scripts.set_anthropic_key import clean, problem_with, save_key
 
 FAKE = "sk-ant-api03-" + "x" * 93 + "AA"   # pragma: allowlist secret (not a real key; real length)
 
@@ -60,3 +60,18 @@ def test_the_key_only_goes_to_anthropics_api(monkeypatch):
     monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://somewhere-else.example")
     options = client_options("k", 10)
     assert options["base_url"] == "https://api.anthropic.com" and options["max_retries"] == 0
+
+
+def test_bracketed_paste_markers_are_removed():
+    assert clean("\x1b[200~" + FAKE + "\x1b[201~\n") == FAKE
+    assert problem_with(clean("[200~" + FAKE + "[201~")) is None
+
+
+@pytest.mark.parametrize("pasted, reason", [
+    ("\x07" + FAKE, "hidden control characters"),
+    ("My NewsLens key", "doesn't start with sk-"),
+    ("sk-ant-...AbCd", "not an API key"),
+])
+def test_unhelpful_pastes_get_a_helpful_reason(pasted, reason):
+    message = problem_with(clean(pasted))
+    assert reason in message and FAKE not in message

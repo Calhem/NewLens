@@ -18,16 +18,32 @@ PREFIX = "sk-ant-api"
 MIN_LENGTH = 100        # Anthropic API keys are about 108 characters; shorter usually means cut off
 
 
+# Some terminals wrap pasted text in invisible "bracketed paste" markers.
+_PASTE_MARKERS = ("\x1b[200~", "\x1b[201~", "[200~", "[201~")
+
+
+def clean(pasted):
+    """The pasted text without surrounding spaces or bracketed-paste markers."""
+    for marker in _PASTE_MARKERS:
+        pasted = pasted.replace(marker, "")
+    return pasted.strip()
+
+
 def problem_with(key):
     """Why this doesn't look like an Anthropic API key, or None. Never includes the key."""
     if not key:
         return "nothing was pasted"
+    if any(not ch.isprintable() for ch in key):
+        return "the paste included hidden control characters; try pasting with Cmd+V in the Terminal app"
     if any(ch.isspace() for ch in key):
         return "it contains spaces or line breaks; copy just the key"
     if key.startswith("sk-ant-admin"):
         return "this is an Admin API key; NewsLens needs an ordinary API key (sk-ant-api...)"
     if not key.startswith(PREFIX):
-        return f"Anthropic API keys start with {PREFIX}"
+        hint = ("it starts like a key but not an API key" if key.startswith("sk-")
+                else "it doesn't start with sk- at all, so the clipboard may hold something else "
+                     "(the key's name, or the shortened preview the Console shows)")
+        return f"Anthropic API keys start with {PREFIX}; {hint}"
     if len(key) < MIN_LENGTH:
         return (f"it is {len(key)} characters, but Anthropic API keys are about 108; it was "
                 "probably copied incompletely. Use the Copy button in the Anthropic Console")
@@ -45,7 +61,7 @@ def save_key(key, env_file=ENV_FILE):
 def main():
     if not ENV_FILE.exists():
         sys.exit("No .env file here. Run this from the project folder after `cp .env.example .env`.")
-    key = getpass.getpass("Paste your Anthropic API key (nothing will appear), then press Enter: ").strip()
+    key = clean(getpass.getpass("Paste your Anthropic API key (nothing will appear), then press Enter: "))
     problem = problem_with(key)
     if problem:
         sys.exit(f"Not saved: {problem}. Nothing was changed.")
